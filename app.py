@@ -16,6 +16,7 @@ st.set_page_config(
 def generate_simpson_data(sample_size=1500, random_seed=42):
     """
     Generates synthetic revenue data demonstrating Simpson's Paradox.
+
     
     Predictor: time_on_page (continuous)
     Outcome: revenue (continuous)
@@ -23,6 +24,16 @@ def generate_simpson_data(sample_size=1500, random_seed=42):
     """
     np.random.seed(random_seed)
     n_per_group = sample_size // 3
+
+    firefox_x = np.random.normal(loc=2.0, scale=0.6, size=n_per_group)
+    firefox_y = 4.0 * (firefox_x - 2.0) + 80.0 + np.random.normal(scale=3.0, size=n_per_group)
+
+    safari_x = np.random.normal(loc=5.0, scale=0.6, size=n_per_group)
+    safari_y = 4.0 * (safari_x - 5.0) + 50.0 + np.random.normal(scale=3.0, size=n_per_group)
+
+    chrome_x = np.random.normal(loc=8.0, scale=0.6, size=n_per_group)
+    chrome_y = 4.0 * (chrome_x - 8.0) + 20.0 + np.random.normal(scale=3.0, size=n_per_group)
+
     
     firefox_x = np.random.normal(loc=2.0, scale=0.6, size=n_per_group)
     firefox_y = 4.0 * (firefox_x - 2.0) + 80.0 + np.random.normal(scale=3.0, size=n_per_group)
@@ -38,6 +49,10 @@ def generate_simpson_data(sample_size=1500, random_seed=42):
         "revenue": np.concatenate([firefox_y, safari_y, chrome_y]),
         "browser": ["Firefox"] * n_per_group + ["Safari"] * n_per_group + ["Chrome"] * n_per_group
     })
+
+    df["time_on_page"] = df["time_on_page"].clip(lower=0.1)
+    df["revenue"] = df["revenue"].clip(lower=0.1)
+
     
     df["time_on_page"] = df["time_on_page"].clip(lower=0.1)
     df["revenue"] = df["revenue"].clip(lower=0.1)
@@ -52,12 +67,14 @@ def get_regressions(df):
     # Overall
     agg_slope, agg_intercept = np.polyfit(df['time_on_page'], df['revenue'], 1)
     results['Aggregated'] = {'slope': agg_slope, 'intercept': agg_intercept}
+
     
     # Browsers
     for b in sorted(df['browser'].unique()):
         sub = df[df['browser'] == b]
         slope, intercept = np.polyfit(sub['time_on_page'], sub['revenue'], 1)
         results[b] = {'slope': slope, 'intercept': intercept}
+
         
     return results
 
@@ -138,6 +155,7 @@ st.markdown("---")
 def create_plot(df, reg_results, view_mode, show_lines):
     # Professional Matplotlib/Seaborn config
     sns.set_theme(style="whitegrid")
+
     
     plt.rcParams.update({
         'font.size': 11,
@@ -147,6 +165,12 @@ def create_plot(df, reg_results, view_mode, show_lines):
         'ytick.labelsize': 11,
         'legend.fontsize': 11
     })
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+
+    x_min, x_max = df['time_on_page'].min() - 0.5, df['time_on_page'].max() + 0.5
+    y_min, y_max = df['revenue'].min() - 5, df['revenue'].max() + 5
+
     
     fig, ax = plt.subplots(figsize=(11, 6))
     
@@ -158,6 +182,83 @@ def create_plot(df, reg_results, view_mode, show_lines):
         "Safari": "#34A853",    # Professional Green
         "Firefox": "#EA4335"    # Professional Red
     }
+
+    if view_mode == "Aggregated view":
+        ax.scatter(
+            df['time_on_page'],
+            df['revenue'],
+            color="#9E9E9E",
+            alpha=0.35,
+            edgecolors="none",
+            s=25,
+            label="All Visitors"
+        )
+
+        if show_lines:
+            slope = reg_results['Aggregated']['slope']
+            intercept = reg_results['Aggregated']['intercept']
+            x_vals = np.linspace(x_min, x_max, 200)
+            y_vals = slope * x_vals + intercept
+            ax.plot(
+                x_vals,
+                y_vals,
+                color="#E91E63",
+                linewidth=5,
+                label=f"Aggregated Trend (slope = {slope:.2f})"
+            )
+    else:
+        for b in sorted(df['browser'].unique()):
+            sub = df[df['browser'] == b]
+            color = browser_colors[b]
+            ax.scatter(
+                sub['time_on_page'],
+                sub['revenue'],
+                color=color,
+                alpha=0.45,
+                edgecolors="none",
+                s=25,
+                label=f"{b} Visits"
+            )
+
+            if show_lines:
+                slope = reg_results[b]['slope']
+                intercept = reg_results[b]['intercept']
+                bx_min, bx_max = sub['time_on_page'].min() - 0.2, sub['time_on_page'].max() + 0.2
+                x_vals = np.linspace(bx_min, bx_max, 100)
+                y_vals = slope * x_vals + intercept
+                ax.plot(
+                    x_vals,
+                    y_vals,
+                    color=color,
+                    linewidth=4,
+                    linestyle="--",
+                    label=f"{b} Trend (slope = {slope:.2f})"
+                )
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xlabel("Time on Page (minutes)", fontweight="bold", labelpad=10)
+    ax.set_ylabel("Revenue ($)", fontweight="bold", labelpad=10)
+    ax.set_title(f"Revenue Analytics by Session Duration ({view_mode})", fontweight="bold", pad=15)
+
+    ax.legend(
+        loc="upper right",
+        frameon=True,
+        facecolor="white",
+        edgecolor="#E0E0E0",
+        framealpha=0.9
+    )
+
+    plt.tight_layout()
+    return fig
+
+# Render plot
+fig = create_plot(df, reg_results, view_mode, show_regression_lines)
+st.pyplot(fig)
+
+# 2. Rename Section & 7. Improve regression summary table
+st.markdown("### 📈 Regression Summary")
+
     
     if view_mode == "Aggregated view":
         ax.scatter(
@@ -294,6 +395,7 @@ with col_left:
         "and the outcome, altering the overall baseline. Ignoring the confounder leads "
         "to a biased and fundamentally incorrect overall conclusion."
     )
+
     
     st.markdown("### ❓ Why does it happen?")
     st.write(
@@ -301,12 +403,21 @@ with col_left:
         "more time on the page, revenue increases. However, the browser groups have vastly different "
         "baseline averages (means) for both session duration and spending:"
     )
+
     
     # 5. Replace long bullet points with a compact dynamically generated summary table
     browser_stats = df.groupby('browser').agg(
         avg_time=('time_on_page', 'mean'),
         avg_revenue=('revenue', 'mean')
     ).reset_index()
+
+    browser_stats = browser_stats.sort_values(by='avg_time')
+    time_labels = ["Low", "Medium", "High"]
+    rev_labels = ["High", "Medium", "Low"]
+
+    browser_stats['Avg Time'] = time_labels
+    browser_stats['Avg Revenue'] = rev_labels
+
     
     browser_stats = browser_stats.sort_values(by='avg_time')
     time_labels = ["Low", "Medium", "High"]
@@ -320,6 +431,10 @@ with col_left:
         "Avg Time": browser_stats['Avg Time'],
         "Avg Revenue": browser_stats['Avg Revenue']
     })
+
+    st.markdown("**Subgroup Baseline Summary (Dynamic):**")
+    st.dataframe(compact_summary, use_container_width=True, hide_index=True)
+
     
     st.markdown("**Subgroup Baseline Summary (Dynamic):**")
     st.dataframe(compact_summary, use_container_width=True, hide_index=True)
@@ -341,6 +456,7 @@ with col_right:
         "revenue' and decide to reduce session length or truncate page content. In reality, increasing page engagement *always* "
         "boosts revenue within every single browser."
     )
+
     
     st.markdown("#### Why does it matter?")
     st.write(
