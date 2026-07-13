@@ -11,6 +11,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 12. Code quality: helper functions for clean architecture
+@st.cache_data
 def generate_simpson_data(sample_size=1500, random_seed=42):
     """
     Generates synthetic revenue data demonstrating Simpson's Paradox.
@@ -42,11 +44,35 @@ def generate_simpson_data(sample_size=1500, random_seed=42):
     
     return df
 
-# Sidebar controls
-st.sidebar.header("🛠️ Controls & Parameters")
+def get_regressions(df):
+    """
+    Calculates overall and browser-level regression lines.
+    """
+    results = {}
+    # Overall
+    agg_slope, agg_intercept = np.polyfit(df['time_on_page'], df['revenue'], 1)
+    results['Aggregated'] = {'slope': agg_slope, 'intercept': agg_intercept}
+    
+    # Browsers
+    for b in sorted(df['browser'].unique()):
+        sub = df[df['browser'] == b]
+        slope, intercept = np.polyfit(sub['time_on_page'], sub['revenue'], 1)
+        results[b] = {'slope': slope, 'intercept': intercept}
+        
+    return results
+
+# 9. Sidebar improvements: short description and organized headers
+st.sidebar.markdown("### ℹ️ About")
+st.sidebar.markdown(
+    "Generate simulated revenue data to explore how Simpson's Paradox can "
+    "reverse conclusions when data are aggregated."
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🛠️ Simulation Controls")
 
 view_mode = st.sidebar.selectbox(
-    "Select View Mode",
+    "View Mode",
     options=["Aggregated view", "Browser-level view"],
     help="Choose whether to view the combined revenue data or split by browser type."
 )
@@ -66,56 +92,109 @@ show_regression_lines = st.sidebar.checkbox(
     help="Toggle rendering of regression fit lines on the scatter plot."
 )
 
-# Load Data
+# Load Data and calculate regressions
 df = generate_simpson_data(sample_size=sample_size)
-
-# Calculate regressions
-def get_regressions(df):
-    results = {}
-    # Overall
-    agg_slope, agg_intercept = np.polyfit(df['time_on_page'], df['revenue'], 1)
-    results['Aggregated'] = {'slope': agg_slope, 'intercept': agg_intercept}
-    
-    # Browsers
-    for b in sorted(df['browser'].unique()):
-        sub = df[df['browser'] == b]
-        slope, intercept = np.polyfit(sub['time_on_page'], sub['revenue'], 1)
-        results[b] = {'slope': slope, 'intercept': intercept}
-        
-    return results
-
 reg_results = get_regressions(df)
 
-# Plotting Function
+# Header
+st.title("Simpson’s Paradox Revenue Explorer")
+st.markdown("An interactive dashboard demonstrating the visual and statistical danger of aggregated metrics in product and business analytics.")
+
+# KPI metrics section at the top
+agg_slope = reg_results['Aggregated']['slope']
+browser_slopes = [reg_results[b]['slope'] for b in sorted(df['browser'].unique())]
+avg_browser_slope = np.mean(browser_slopes)
+paradox_present = (agg_slope < 0) and all(gs > 0 for gs in browser_slopes)
+
+kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+
+with kpi_col1:
+    st.metric(
+        label="Overall Slope",
+        value=f"{agg_slope:.2f}",
+        delta="Negative",
+        delta_color="inverse"
+    )
+
+with kpi_col2:
+    st.metric(
+        label="Average Browser Slope",
+        value=f"{avg_browser_slope:.2f}",
+        delta="Positive",
+        delta_color="normal"
+    )
+
+with kpi_col3:
+    paradox_status = "ACTIVE" if paradox_present else "NOT DETECTED"
+    st.metric(
+        label="Simpson's Paradox",
+        value=paradox_status,
+        delta="Reversal Active" if paradox_present else "No Reversal",
+        delta_color="normal" if paradox_present else "inverse"
+    )
+st.markdown("---")
+
+# 8. Improve chart presentation
 def create_plot(df, reg_results, view_mode, show_lines):
+    # Professional Matplotlib/Seaborn config
     sns.set_theme(style="whitegrid")
-    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    plt.rcParams.update({
+        'font.size': 11,
+        'axes.labelsize': 13,
+        'axes.titlesize': 15,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'legend.fontsize': 11
+    })
+    
+    fig, ax = plt.subplots(figsize=(11, 6))
     
     x_min, x_max = df['time_on_page'].min() - 0.5, df['time_on_page'].max() + 0.5
     y_min, y_max = df['revenue'].min() - 5, df['revenue'].max() + 5
     
     browser_colors = {
-        "Chrome": "#4285F4",    # Google blue
-        "Safari": "#34A853",    # Clean green
-        "Firefox": "#EA4335"    # Clean red
+        "Chrome": "#4285F4",    # Professional Blue
+        "Safari": "#34A853",    # Professional Green
+        "Firefox": "#EA4335"    # Professional Red
     }
     
     if view_mode == "Aggregated view":
-        # Draw all points with same neutral color
-        ax.scatter(df['time_on_page'], df['revenue'], color="grey", alpha=0.4, edgecolors="none", s=30, label="All Visitors")
+        ax.scatter(
+            df['time_on_page'], 
+            df['revenue'], 
+            color="#9E9E9E", 
+            alpha=0.35, 
+            edgecolors="none", 
+            s=25, 
+            label="All Visitors"
+        )
         
         if show_lines:
             slope = reg_results['Aggregated']['slope']
             intercept = reg_results['Aggregated']['intercept']
             x_vals = np.linspace(x_min, x_max, 200)
             y_vals = slope * x_vals + intercept
-            ax.plot(x_vals, y_vals, color="#E91E63", linewidth=4, label=f"Aggregated Trend (slope = {slope:.3f})")
+            ax.plot(
+                x_vals, 
+                y_vals, 
+                color="#E91E63", 
+                linewidth=5, 
+                label=f"Aggregated Trend (slope = {slope:.2f})"
+            )
     else:
-        # Draw points colored by browser
         for b in sorted(df['browser'].unique()):
             sub = df[df['browser'] == b]
             color = browser_colors[b]
-            ax.scatter(sub['time_on_page'], sub['revenue'], color=color, alpha=0.5, edgecolors="none", s=30, label=f"{b} Visits")
+            ax.scatter(
+                sub['time_on_page'], 
+                sub['revenue'], 
+                color=color, 
+                alpha=0.45, 
+                edgecolors="none", 
+                s=25, 
+                label=f"{b} Visits"
+            )
             
             if show_lines:
                 slope = reg_results[b]['slope']
@@ -123,38 +202,45 @@ def create_plot(df, reg_results, view_mode, show_lines):
                 bx_min, bx_max = sub['time_on_page'].min() - 0.2, sub['time_on_page'].max() + 0.2
                 x_vals = np.linspace(bx_min, bx_max, 100)
                 y_vals = slope * x_vals + intercept
-                ax.plot(x_vals, y_vals, color=color, linewidth=3, linestyle="--", label=f"{b} Trend (slope = {slope:.3f})")
+                ax.plot(
+                    x_vals, 
+                    y_vals, 
+                    color=color, 
+                    linewidth=4, 
+                    linestyle="--", 
+                    label=f"{b} Trend (slope = {slope:.2f})"
+                )
                 
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
-    ax.set_xlabel("Time on Page (minutes)", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Revenue ($)", fontsize=12, fontweight="bold")
-    ax.set_title(f"Revenue vs. Time on Page: {view_mode}", fontsize=14, fontweight="bold", pad=15)
-    ax.legend(loc="best", frameon=True, facecolor="white", edgecolor="none")
+    ax.set_xlabel("Time on Page (minutes)", fontweight="bold", labelpad=10)
+    ax.set_ylabel("Revenue ($)", fontweight="bold", labelpad=10)
+    ax.set_title(f"Revenue Analytics by Session Duration ({view_mode})", fontweight="bold", pad=15)
+    
+    ax.legend(
+        loc="upper right", 
+        frameon=True, 
+        facecolor="white", 
+        edgecolor="#E0E0E0", 
+        framealpha=0.9
+    )
     
     plt.tight_layout()
     return fig
 
-# Show Title
-st.title("Simpson’s Paradox Revenue Explorer")
-st.markdown("An interactive web app demonstrating the danger of aggregated revenue analytics in product and business operations.")
-
+# Render plot
 fig = create_plot(df, reg_results, view_mode, show_regression_lines)
 st.pyplot(fig)
 
-# Slope Table Display
-st.markdown("### 📈 Slope Summary Table")
-
-agg_slope = reg_results['Aggregated']['slope']
-group_slopes = [reg_results[b]['slope'] for b in sorted(df['browser'].unique())]
-paradox_present = (agg_slope < 0) and all(gs > 0 for gs in group_slopes)
+# 2. Rename Section & 7. Improve regression summary table
+st.markdown("### 📈 Regression Summary")
 
 summary_data = [
     {
         "Segment": "Aggregated (Overall)",
-        "Slope": round(agg_slope, 3),
-        "Trend Direction": "Negative (-)" if agg_slope < 0 else "Positive (+)",
-        "Paradox Present": paradox_present
+        "Regression Slope": round(agg_slope, 3),
+        "Direction": "Negative (-)" if agg_slope < 0 else "Positive (+)",
+        "Interpretation": "Negative relationship" if agg_slope < 0 else "Positive relationship"
     }
 ]
 
@@ -162,65 +248,123 @@ for b in sorted(df['browser'].unique()):
     b_slope = reg_results[b]['slope']
     summary_data.append({
         "Segment": f"Browser: {b}",
-        "Slope": round(b_slope, 3),
-        "Trend Direction": "Positive (+)" if b_slope > 0 else "Negative (-)",
-        "Paradox Present": paradox_present
+        "Regression Slope": round(b_slope, 3),
+        "Direction": "Positive (+)" if b_slope > 0 else "Negative (-)",
+        "Interpretation": "Positive relationship" if b_slope > 0 else "Negative relationship"
     })
 
 summary_df = pd.DataFrame(summary_data)
-st.dataframe(summary_df, width="stretch", hide_index=True)
 
+# Highlight aggregated row if it differs from subgroups
+def highlight_row(row):
+    is_agg = row['Segment'] == "Aggregated (Overall)"
+    if is_agg and paradox_present:
+        return ['background-color: #FEE8EB; font-weight: bold; color: #D32F2F'] * len(row)
+    return [''] * len(row)
+
+styled_df = summary_df.style.apply(highlight_row, axis=1)
+st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+# 3. Improve the success/warning message
 if paradox_present:
-    st.success(f"🎉 **Simpson's Paradox is ACTIVE!** Aggregated Slope is **{agg_slope:.3f}** (Negative), while all individual browser slopes are strictly Positive (ranging between ~3.8 and ~4.3)!")
+    st.success(
+        "✅ **Simpson's Paradox detected.** "
+        "Overall regression is negative while every browser-specific regression remains positive."
+    )
 else:
-    st.warning("⚠️ **Simpson's Paradox is not active.** Verify that group slopes are positive and the combined slope is negative.")
+    st.warning(
+        "⚠️ **Simpson's Paradox not active.** "
+        "The overall and subgroup regression slopes do not show opposing signs."
+    )
 
-# Explanations and Context Panels
+st.markdown("---")
+
+# 4. Improve the text layout & 5. Improve browser explanation & 2. Rename Confounding -> Business Takeaways
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.markdown("### 🧠 What is Simpson’s Paradox?")
+    st.markdown("### 🧠 What is Simpson's Paradox?")
     st.write(
-        "Simpson's Paradox is a statistical phenomenon where a trend or relationship appearing "
-        "in separate groups of data **reverses** or disappears when the groups are aggregated "
-        "together. This occurs because of a **confounding variable**—a variable that influences "
-        "both the predictor and the outcome."
+        "Simpson's Paradox is a classical statistical phenomenon where a trend or correlation "
+        "reverses when data is aggregated. A trend observed within distinct, meaningful subgroups "
+        "can completely disappear or change direction when those subgroups are combined."
+    )
+    st.write(
+        "This occurs because a hidden **confounding variable** relates to both the predictor "
+        "and the outcome, altering the overall baseline. Ignoring the confounder leads "
+        "to a biased and fundamentally incorrect overall conclusion."
     )
     
-    st.markdown("#### Why do the trends differ in this dataset?")
+    st.markdown("### ❓ Why does it happen?")
     st.write(
-        "In this dataset, each individual browser has a clear, positive relationship: as users spend more time on "
-        "the page, revenue increases. However, the browser groups also have vastly different baselines (means):"
+        "In this dataset, each individual browser has a clear, positive relationship: as users spend "
+        "more time on the page, revenue increases. However, the browser groups have vastly different "
+        "baseline averages (means) for both session duration and spending:"
     )
+    
+    # 5. Replace long bullet points with a compact dynamically generated summary table
+    browser_stats = df.groupby('browser').agg(
+        avg_time=('time_on_page', 'mean'),
+        avg_revenue=('revenue', 'mean')
+    ).reset_index()
+    
+    browser_stats = browser_stats.sort_values(by='avg_time')
+    time_labels = ["Low", "Medium", "High"]
+    rev_labels = ["High", "Medium", "Low"]
+    
+    browser_stats['Avg Time'] = time_labels
+    browser_stats['Avg Revenue'] = rev_labels
+    
+    compact_summary = pd.DataFrame({
+        "Browser": browser_stats['browser'],
+        "Avg Time": browser_stats['Avg Time'],
+        "Avg Revenue": browser_stats['Avg Revenue']
+    })
+    
+    st.markdown("**Subgroup Baseline Summary (Dynamic):**")
+    st.dataframe(compact_summary, use_container_width=True, hide_index=True)
+    
     st.write(
-        "- **Firefox** users spend very little time on average (~2 minutes) but produce extremely high baseline revenue (~$80).\n"
-        "- **Safari** users have moderate time on page (~5 minutes) and moderate baseline revenue (~$50).\n"
-        "- **Chrome** users have very high time on page (~8 minutes) but generate extremely low baseline revenue (~$20)."
-    )
-    st.write(
-        "When the browser label is omitted (Aggregated view), the high-revenue Firefox points on the left and the "
-        "low-revenue Chrome points on the right drag the overall regression line downwards, creating a false "
-        "conclusion that spending more time on the page leads to *lower* revenue."
+        "When the browser label is omitted (Aggregated view), the high-revenue, low-engagement Firefox subgroup "
+        "and the low-revenue, high-engagement Chrome subgroup drag the combined regression line downwards, "
+        "yielding a false negative overall trend."
     )
 
 with col_right:
-    st.markdown("### 💼 Why This Matters for RevOps")
+    st.markdown("### 💼 Business Takeaways")
     st.write(
-        "In Revenue Operations (RevOps) and product analytics, relying solely on **aggregated metrics** (like "
-        "overall site-wide Revenue Per Mille [RPM] or conversion rates) can result in expensive strategic blunders."
+        "Relying solely on aggregated high-level KPIs can result in expensive strategic blunders. "
+        "In RevOps, this paradox highlights why segmentation is crucial before optimizing products or allocating budgets."
     )
     st.write(
-        "For instance, an executive analyzing the aggregated data might conclude that 'increased page engagement is hurting "
-        "revenue' and decide to reduce content length or page sizes. In reality, increasing page engagement *always* "
-        "boosts revenue for every single browser. The negative aggregate slope is entirely an artifact of user distribution."
+        "An executive analyzing the overall combined line might conclude that 'increased page engagement is hurting "
+        "revenue' and decide to reduce session length or truncate page content. In reality, increasing page engagement *always* "
+        "boosts revenue within every single browser."
     )
-    st.markdown("#### Confounding Variables & Revenue Diagnostics:")
+    
+    st.markdown("#### Why does it matter?")
     st.write(
-        "1. **How Aggregated Trends Hide Browser/Platform Effects:** When metrics are combined, the distinct baseline differences "
-        "between groups can skew the aggregated trend, hiding the true platform-level performance.\n"
-        "2. **Safari Mobile vs. Chrome Desktop:** Safari mobile users often exhibit shorter session times (low time_on_page) but "
-        "high baseline conversion/purchasing intent (high revenue). Conversely, Chrome desktop users spend longer browsing (high time_on_page) "
-        "but may have lower average transaction sizes (low revenue) or higher bounce rates.\n"
-        "3. **Revenue Diagnostics:** RevOps teams must segment metrics by platform, browser, device, or acquisition channel "
-        "before making crucial product optimization, ad spent, or budget allocation decisions."
+        "1. **Confounding Variables & Revenue Diagnostics:** Combining user segments with distinct baselines "
+        "skews the aggregated trend, masking true performance and leading to attribution errors.\n\n"
+        "2. **Safari Mobile vs. Chrome Desktop:** Safari mobile users frequently exhibit shorter session times (low time_on_page) but "
+        "extremely high baseline conversion and purchasing intent (high revenue). In contrast, Chrome desktop users spend longer "
+        "browsing and researching (high time_on_page) but generate lower transaction value (low revenue) or higher dropoffs."
     )
+
+st.markdown("---")
+
+# 6. Add a "Key Takeaway" box
+st.info(
+    "💡 **Key Takeaway**\n\n"
+    "Simpson's Paradox demonstrates that trends observed in aggregated data can reverse after accounting for meaningful subgroups. "
+    "Before making business decisions based on observational data, always investigate potential confounding variables."
+)
+
+# 10. Add footer with small divider
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: gray; font-size: 13px; margin-top: 15px;'>"
+    "Built with 🐍 <b>Python</b> | 🎈 <b>Streamlit</b> | 🔢 <b>NumPy</b> | 🐼 <b>Pandas</b> | 🔬 <b>Scikit-learn</b>"
+    "</div>",
+    unsafe_allow_html=True
+)
