@@ -6,289 +6,221 @@ import seaborn as sns
 
 # Set page configuration
 st.set_page_config(
-    page_title="Simpson's Paradox Explorer",
+    page_title="Simpson's Paradox Revenue Explorer",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-def generate_simpson_data(n_per_group=50, num_groups=3, group_slope=1.5, noise=0.5, random_seed=42):
+def generate_simpson_data(sample_size=1500, random_seed=42):
     """
-    Generates synthetic data demonstrating Simpson's Paradox.
-
-    Each group has a positive slope (group_slope) between x and y,
-    but the overall (aggregated) slope is negative because group means for x
-    increase while group means for y decrease.
+    Generates synthetic revenue data demonstrating Simpson's Paradox.
+    
+    Predictor: time_on_page (continuous)
+    Outcome: revenue (continuous)
+    Confounder: browser (categorical: Chrome, Safari, Firefox)
     """
     np.random.seed(random_seed)
-
-    if num_groups == 3:
-        x_means = [2.0, 5.0, 8.0]
-        y_means = [12.0, 8.0, 4.0]
-        group_names = ["Group A", "Group B", "Group C"]
-    elif num_groups == 4:
-        x_means = [2.0, 5.0, 8.0, 11.0]
-        y_means = [15.0, 11.0, 7.0, 3.0]
-        group_names = ["Group A", "Group B", "Group C", "Group D"]
-    else:
-        # Fallback/dynamic generation
-        x_means = [2.0 + 3.0 * i for i in range(num_groups)]
-        y_means = [5.0 + 4.0 * (num_groups - 1 - i) for i in range(num_groups)]
-        group_names = [f"Group {chr(65 + i)}" for i in range(num_groups)]
-
-    data = []
-    for i in range(num_groups):
-        mu_x = x_means[i]
-        mu_y = y_means[i]
-        name = group_names[i]
-
-        # Generate x values
-        x = np.random.normal(loc=mu_x, scale=0.8, size=n_per_group)
-        # Generate y values based on group_slope and normal noise
-        y = group_slope * (x - mu_x) + mu_y + np.random.normal(loc=0.0, scale=noise, size=n_per_group)
-
-        for val_x, val_y in zip(x, y):
-            data.append({
-                "x": val_x,
-                "y": val_y,
-                "group": name
-            })
-
-    return pd.DataFrame(data)
-
-def calculate_regressions(df):
-    """
-    Computes slope, intercept, and sign for aggregated and group-level regressions.
-
-    Returns a dictionary of regression results and a pandas DataFrame for tabular display.
-    """
-    results = {}
-
-    # 1. Aggregated regression
-    agg_slope, agg_intercept = np.polyfit(df['x'], df['y'], 1)
-    results['Aggregated'] = {
-        'slope': agg_slope,
-        'intercept': agg_intercept,
-        'label': 'Aggregated (All data)'
-    }
-
-    # 2. Group-level regressions
-    for g in sorted(df['group'].unique()):
-        group_df = df[df['group'] == g]
-        slope, intercept = np.polyfit(group_df['x'], group_df['y'], 1)
-        results[g] = {
-            'slope': slope,
-            'intercept': intercept,
-            'label': f'Group-level ({g})'
-        }
-
-    # Check if paradox is present
-    # Paradox is present if aggregated slope sign differs from ALL group slope signs.
-    agg_sign = np.sign(agg_slope)
-    paradox_present = True
-    for g in sorted(df['group'].unique()):
-        g_slope = results[g]['slope']
-        if np.sign(g_slope) == agg_sign or np.sign(g_slope) == 0 or agg_sign == 0:
-            paradox_present = False
-            break
-
-    # Build summary DataFrame for display
-    summary_data = []
-    for key, val in results.items():
-        is_agg = (key == 'Aggregated')
-
-        # Determine paradox status/highlight
-        if is_agg:
-            status = "Overall Trend"
-        else:
-            g_slope = val['slope']
-            if np.sign(g_slope) != agg_sign:
-                status = "🚨 REVERSED (Paradox)"
-            else:
-                status = "Consistent"
-
-        summary_data.append({
-            "Analysis Level": val['label'],
-            "Slope": round(val['slope'], 3),
-            "Intercept": round(val['intercept'], 3),
-            "Trend Direction": "Positive (+)" if val['slope'] > 0 else "Negative (-)",
-            "Relation to Overall": status
-        })
-
-    summary_df = pd.DataFrame(summary_data)
-    return results, summary_df, paradox_present
-
-def create_plot(df, regression_results, view_mode):
-    """
-    Generates the scatter plot with regression lines based on selected view mode.
-    """
-    sns.set_theme(style="whitegrid")
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    x_min, x_max = df['x'].min() - 1, df['x'].max() + 1
-    y_min, y_max = df['y'].min() - 2, df['y'].max() + 2
-
-    # Distinct group colors
-    palette = sns.color_palette("Set1", n_colors=len(df['group'].unique()))
-    group_colors = {g: palette[i] for i, g in enumerate(sorted(df['group'].unique()))}
-
-    if view_mode == "Aggregated":
-        # Draw all points with same neutral color
-        ax.scatter(df['x'], df['y'], color="grey", alpha=0.5, edgecolors="none", s=50, label="All Data Points")
-
-        # Aggregated regression line
-        agg_slope = regression_results['Aggregated']['slope']
-        agg_intercept = regression_results['Aggregated']['intercept']
-        x_vals = np.linspace(x_min, x_max, 200)
-        y_vals = agg_slope * x_vals + agg_intercept
-        ax.plot(x_vals, y_vals, color="crimson", linewidth=4, label=f"Overall Regression (slope = {agg_slope:.3f})")
-
-    else: # "By Group"
-        # Draw points colored by group
-        for g in sorted(df['group'].unique()):
-            group_df = df[df['group'] == g]
-            color = group_colors[g]
-            ax.scatter(group_df['x'], group_df['y'], color=color, alpha=0.7, edgecolors="none", s=60, label=f"{g} Points")
-
-            # Group regression line
-            slope = regression_results[g]['slope']
-            intercept = regression_results[g]['intercept']
-
-            # Draw line within group's range
-            gx_min, gx_max = group_df['x'].min() - 0.5, group_df['x'].max() + 0.5
-            x_vals = np.linspace(gx_min, gx_max, 100)
-            y_vals = slope * x_vals + intercept
-            ax.plot(x_vals, y_vals, color=color, linewidth=3, linestyle="--", label=f"{g} Fit (slope = {slope:.3f})")
-
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.set_xlabel("Predictor (x)", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Outcome (y)", fontsize=12, fontweight="bold")
-    ax.set_title(f"Scatter Plot: {view_mode} View", fontsize=14, fontweight="bold", pad=15)
-    ax.legend(loc="best", frameon=True, facecolor="white", edgecolor="none")
-
-    plt.tight_layout()
-    return fig
-
-# Streamlit App Logic
-st.title("Simpson's Paradox Explorer")
-
-st.markdown("""
-Simpson's Paradox is a striking statistical phenomenon where a trend appears in several groups of data but **reverses** when the groups are combined.
-
-This interactive explorer lets you generate synthetic data to visualize how a **confounding variable** (the group membership) can completely flip the direction of a linear relationship between $x$ and $y$.
-""")
+    n_per_group = sample_size // 3
+    
+    firefox_x = np.random.normal(loc=2.0, scale=0.6, size=n_per_group)
+    firefox_y = 4.0 * (firefox_x - 2.0) + 80.0 + np.random.normal(scale=3.0, size=n_per_group)
+    
+    safari_x = np.random.normal(loc=5.0, scale=0.6, size=n_per_group)
+    safari_y = 4.0 * (safari_x - 5.0) + 50.0 + np.random.normal(scale=3.0, size=n_per_group)
+    
+    chrome_x = np.random.normal(loc=8.0, scale=0.6, size=n_per_group)
+    chrome_y = 4.0 * (chrome_x - 8.0) + 20.0 + np.random.normal(scale=3.0, size=n_per_group)
+    
+    df = pd.DataFrame({
+        "time_on_page": np.concatenate([firefox_x, safari_x, chrome_x]),
+        "revenue": np.concatenate([firefox_y, safari_y, chrome_y]),
+        "browser": ["Firefox"] * n_per_group + ["Safari"] * n_per_group + ["Chrome"] * n_per_group
+    })
+    
+    df["time_on_page"] = df["time_on_page"].clip(lower=0.1)
+    df["revenue"] = df["revenue"].clip(lower=0.1)
+    
+    return df
 
 # Sidebar controls
 st.sidebar.header("🛠️ Controls & Parameters")
 
 view_mode = st.sidebar.selectbox(
     "Select View Mode",
-    options=["Aggregated", "By Group"],
-    help="Choose whether to view the combined data or split by sub-groups."
+    options=["Aggregated view", "Browser-level view"],
+    help="Choose whether to view the combined revenue data or split by browser type."
 )
 
 sample_size = st.sidebar.slider(
-    "Sample Size (per group)",
-    min_value=10,
-    max_value=200,
-    value=50,
-    step=10,
-    help="Number of data points generated for each sub-group."
+    "Sample Size",
+    min_value=500,
+    max_value=5000,
+    value=1500,
+    step=100,
+    help="Total number of data points to generate across all browser groups."
 )
 
-num_groups = st.sidebar.slider(
-    "Number of Groups",
-    min_value=3,
-    max_value=4,
-    value=3,
-    step=1,
-    help="Number of categorical sub-groups."
+show_regression_lines = st.sidebar.checkbox(
+    "Show regression lines",
+    value=True,
+    help="Toggle rendering of regression fit lines on the scatter plot."
 )
 
-group_slope = st.sidebar.slider(
-    "Group-level Slope (True)",
-    min_value=-2.0,
-    max_value=4.0,
-    value=1.5,
-    step=0.1,
-    help="The slope of the relationship between x and y within each group."
-)
+# Load Data
+df = generate_simpson_data(sample_size=sample_size)
 
-noise_level = st.sidebar.slider(
-    "Noise Level",
-    min_value=0.1,
-    max_value=3.0,
-    value=0.5,
-    step=0.1,
-    help="Standard deviation of the random noise added to y."
-)
+# Calculate regressions
+def get_regressions(df):
+    results = {}
+    # Overall
+    agg_slope, agg_intercept = np.polyfit(df['time_on_page'], df['revenue'], 1)
+    results['Aggregated'] = {'slope': agg_slope, 'intercept': agg_intercept}
+    
+    # Browsers
+    for b in sorted(df['browser'].unique()):
+        sub = df[df['browser'] == b]
+        slope, intercept = np.polyfit(sub['time_on_page'], sub['revenue'], 1)
+        results[b] = {'slope': slope, 'intercept': intercept}
+        
+    return results
 
-random_seed = st.sidebar.number_input(
-    "Random Seed",
-    min_value=1,
-    max_value=1000,
-    value=42,
-    step=1,
-    help="Change the seed to generate different random datasets."
-)
+reg_results = get_regressions(df)
 
-# Generate Data
-df = generate_simpson_data(
-    n_per_group=sample_size,
-    num_groups=num_groups,
-    group_slope=group_slope,
-    noise=noise_level,
-    random_seed=random_seed
-)
+# Plotting Function
+def create_plot(df, reg_results, view_mode, show_lines):
+    sns.set_theme(style="whitegrid")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    x_min, x_max = df['time_on_page'].min() - 0.5, df['time_on_page'].max() + 0.5
+    y_min, y_max = df['revenue'].min() - 5, df['revenue'].max() + 5
+    
+    browser_colors = {
+        "Chrome": "#4285F4",    # Google blue
+        "Safari": "#34A853",    # Clean green
+        "Firefox": "#EA4335"    # Clean red
+    }
+    
+    if view_mode == "Aggregated view":
+        # Draw all points with same neutral color
+        ax.scatter(df['time_on_page'], df['revenue'], color="grey", alpha=0.4, edgecolors="none", s=30, label="All Visitors")
+        
+        if show_lines:
+            slope = reg_results['Aggregated']['slope']
+            intercept = reg_results['Aggregated']['intercept']
+            x_vals = np.linspace(x_min, x_max, 200)
+            y_vals = slope * x_vals + intercept
+            ax.plot(x_vals, y_vals, color="#E91E63", linewidth=4, label=f"Aggregated Trend (slope = {slope:.3f})")
+    else:
+        # Draw points colored by browser
+        for b in sorted(df['browser'].unique()):
+            sub = df[df['browser'] == b]
+            color = browser_colors[b]
+            ax.scatter(sub['time_on_page'], sub['revenue'], color=color, alpha=0.5, edgecolors="none", s=30, label=f"{b} Visits")
+            
+            if show_lines:
+                slope = reg_results[b]['slope']
+                intercept = reg_results[b]['intercept']
+                bx_min, bx_max = sub['time_on_page'].min() - 0.2, sub['time_on_page'].max() + 0.2
+                x_vals = np.linspace(bx_min, bx_max, 100)
+                y_vals = slope * x_vals + intercept
+                ax.plot(x_vals, y_vals, color=color, linewidth=3, linestyle="--", label=f"{b} Trend (slope = {slope:.3f})")
+                
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xlabel("Time on Page (minutes)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Revenue ($)", fontsize=12, fontweight="bold")
+    ax.set_title(f"Revenue vs. Time on Page: {view_mode}", fontsize=14, fontweight="bold", pad=15)
+    ax.legend(loc="best", frameon=True, facecolor="white", edgecolor="none")
+    
+    plt.tight_layout()
+    return fig
 
-# Calculate Regressions
-regression_results, summary_df, paradox_present = calculate_regressions(df)
+# Show Title
+st.title("Simpson’s Paradox Revenue Explorer")
+st.markdown("An interactive web app demonstrating the danger of aggregated revenue analytics in product and business operations.")
 
-# Plotting area
-fig = create_plot(df, regression_results, view_mode)
+fig = create_plot(df, reg_results, view_mode, show_regression_lines)
 st.pyplot(fig)
 
-# Table and Paradox Alert
-st.markdown("### 📈 Regression Slopes Summary")
+# Slope Table Display
+st.markdown("### 📈 Slope Summary Table")
 
-col1, col2 = st.columns([3, 2])
+agg_slope = reg_results['Aggregated']['slope']
+group_slopes = [reg_results[b]['slope'] for b in sorted(df['browser'].unique())]
+paradox_present = (agg_slope < 0) and all(gs > 0 for gs in group_slopes)
 
-with col1:
-    st.markdown("This table shows the fitted slope and intercept for the overall dataset and for each subgroup:")
-    # Display table without index to keep it clean
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+summary_data = [
+    {
+        "Segment": "Aggregated (Overall)",
+        "Slope": round(agg_slope, 3),
+        "Formula Direction": "Negative (-)" if agg_slope < 0 else "Positive (+)",
+        "Simpson's Paradox Present": paradox_present
+    }
+]
 
-with col2:
-    if paradox_present:
-        st.success("### 🎉 Simpson's Paradox is PRESENT!")
-        st.markdown(
-            f"The **overall trend is negative** (slope = **{regression_results['Aggregated']['slope']:.3f}**), "
-            "but **every sub-group trend is positive**! This is a perfect example of a statistical reversal."
-        )
-    else:
-        st.warning("### ⚠️ Simpson's Paradox is NOT present.")
-        st.markdown(
-            "The signs of the aggregated slope and the group-level slopes do not fully contradict. "
-            "Try increasing the **Group-level Slope** or adjusting other settings in the sidebar to produce a reversal!"
-        )
+for b in sorted(df['browser'].unique()):
+    b_slope = reg_results[b]['slope']
+    summary_data.append({
+        "Segment": f"Browser: {b}",
+        "Slope": round(b_slope, 3),
+        "Formula Direction": "Positive (+)" if b_slope > 0 else "Negative (-)",
+        "Simpson's Paradox Present": paradox_present
+    })
 
-# Scientific/Mathematical Explanation
-st.markdown("---")
-st.markdown("### 🧠 How It Works: The Mathematics of the Paradox")
+summary_df = pd.DataFrame(summary_data)
+st.dataframe(summary_df, width="stretch", hide_index=True)
 
-st.markdown(f"""
-In this dataset:
-1. **Within-Group Relationship:** For each group $i$, $y$ is generated directly as:
-   $$y = \\beta \\cdot (x - \\mu_{{x, i}}) + \\mu_{{y, i}} + \\epsilon$$
-   where the true slope $\\beta$ is set to **{group_slope:.1f}** (which is positive). As a result, the fitted slopes for all groups are close to this value.
+if paradox_present:
+    st.success(f"🎉 **Simpson's Paradox is ACTIVE!** Aggregated Slope is **{agg_slope:.3f}** (Negative), while all individual browser slopes are strictly Positive (ranging between ~3.8 and ~4.3)!")
+else:
+    st.warning("⚠️ **Simpson's Paradox is not active.** Verify that group slopes are positive and the combined slope is negative.")
 
-2. **Aggregated Relationship:** The group means are chosen such that as the mean of $x$ increases, the mean of $y$ decreases:
-   - Group A: $\\mu_{{x}}$ is low, $\\mu_{{y}}$ is high.
-   - Group B: $\\mu_{{x}}$ is medium, $\\mu_{{y}}$ is medium.
-   - Group C: $\\mu_{{x}}$ is high, $\\mu_{{y}}$ is low.
+# Explanations and Context Panels
+col_left, col_right = st.columns(2)
 
-   When we combine (aggregate) all the groups together and ignore the group labels, the overall regression line trends downward from the Group A cluster to the Group C cluster, resulting in an aggregated slope of **{regression_results['Aggregated']['slope']:.3f}**.
+with col_left:
+    st.markdown("### 🧠 What is Simpson’s Paradox?")
+    st.write(
+        "Simpson's Paradox is a statistical phenomenon where a trend or relationship appearing "
+        "in separate groups of data **reverses** or disappears when the groups are aggregated "
+        "together. This occurs because of a **confounding variable**—a variable that influences "
+        "both the predictor and the outcome."
+    )
+    
+    st.markdown("#### Why do the trends differ in this dataset?")
+    st.write(
+        "In this dataset, each individual browser has a clear, positive relationship: as users spend more time on "
+        "the page, revenue increases. However, the browser groups also have vastly different baselines (means):"
+    )
+    st.write(
+        "- **Firefox** users spend very little time on average (~2 minutes) but produce extremely high baseline revenue (~$80).\n"
+        "- **Safari** users have moderate time on page (~5 minutes) and moderate baseline revenue (~$50).\n"
+        "- **Chrome** users have very high time on page (~8 minutes) but generate extremely low baseline revenue (~$20)."
+    )
+    st.write(
+        "When the browser label is omitted (Aggregated view), the high-revenue Firefox points on the left and the "
+        "low-revenue Chrome points on the right drag the overall regression line downwards, creating a false "
+        "conclusion that spending more time on the page leads to *lower* revenue."
+    )
 
-3. **The Confounder:** Here, `group` acts as a **confounder** because it influences both $x$ (group assignment determines where points lie on the horizontal axis) and $y$ (group assignment determines where points lie on the vertical axis). Omitting `group` from the analysis leads to a severely biased and misleading conclusion.
-""")
+with col_right:
+    st.markdown("### 💼 Why this matters for RevOps & Revenue Analytics")
+    st.write(
+        "In Revenue Operations (RevOps) and product analytics, relying solely on **aggregated metrics** (like "
+        "overall site-wide Revenue Per Mille [RPM] or conversion rates) can result in expensive strategic blunders."
+    )
+    st.write(
+        "For instance, an executive analyzing the aggregated data might conclude that 'increased page engagement is hurting "
+        "revenue' and decide to reduce content length or page sizes. In reality, increasing page engagement *always* "
+        "boosts revenue for every single browser. The negative aggregate slope is entirely an artifact of user distribution."
+    )
+    st.markdown("#### Real-world Revenue Diagnostics:")
+    st.write(
+        "1. **Mobile vs. Desktop Biases:** Safari is predominantly used on mobile devices with high-intent impulse purchasing but shorter "
+        "session times. Chrome is heavily used on desktop where users do comprehensive research (high time on page) but convert "
+        "at lower average cart sizes.\n"
+        "2. **Attribution Errors:** Misinterpreting aggregate charts can lead to turning off ads on browsers that actually have the highest "
+        "revenue density relative to engagement.\n"
+        "3. **Segment-Level Optimization:** RevOps teams must segment metrics by platform, browser, device, or acquisition channel before "
+        "making optimization or product roadmap decisions."
+    )
