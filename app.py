@@ -153,8 +153,8 @@ summary_data = [
     {
         "Segment": "Aggregated (Overall)",
         "Slope": round(agg_slope, 3),
-        "Formula Direction": "Negative (-)" if agg_slope < 0 else "Positive (+)",
-        "Simpson's Paradox Present": paradox_present
+        "Trend Direction": "Negative (-)" if agg_slope < 0 else "Positive (+)",
+        "Paradox Present": paradox_present
     }
 ]
 
@@ -163,8 +163,8 @@ for b in sorted(df['browser'].unique()):
     summary_data.append({
         "Segment": f"Browser: {b}",
         "Slope": round(b_slope, 3),
-        "Formula Direction": "Positive (+)" if b_slope > 0 else "Negative (-)",
-        "Simpson's Paradox Present": paradox_present
+        "Trend Direction": "Positive (+)" if b_slope > 0 else "Negative (-)",
+        "Paradox Present": paradox_present
     })
 
 summary_df = pd.DataFrame(summary_data)
@@ -204,7 +204,7 @@ with col_left:
     )
 
 with col_right:
-    st.markdown("### 💼 Why this matters for RevOps & Revenue Analytics")
+    st.markdown("### 💼 Why This Matters for RevOps")
     st.write(
         "In Revenue Operations (RevOps) and product analytics, relying solely on **aggregated metrics** (like "
         "overall site-wide Revenue Per Mille [RPM] or conversion rates) can result in expensive strategic blunders."
@@ -214,13 +214,13 @@ with col_right:
         "revenue' and decide to reduce content length or page sizes. In reality, increasing page engagement *always* "
         "boosts revenue for every single browser. The negative aggregate slope is entirely an artifact of user distribution."
     )
-    st.markdown("#### Real-world Revenue Diagnostics:")
+    st.markdown("#### Confounding Variables & Revenue Diagnostics:")
     st.write(
-        "1. **Mobile vs. Desktop Biases:** Safari is predominantly used on mobile devices with high-intent impulse purchasing but shorter "
-        "session times. Chrome is heavily used on desktop where users do comprehensive research (high time on page) but convert "
-        "at lower average cart sizes.\n"
-        "2. **Attribution Errors:** Misinterpreting aggregate charts can lead to turning off ads on browsers that actually have the highest "
-        "revenue density relative to engagement.\n"
-        "3. **Segment-Level Optimization:** RevOps teams must segment metrics by platform, browser, device, or acquisition channel before "
-        "making optimization or product roadmap decisions."
+        "1. **How Aggregated Trends Hide Browser/Platform Effects:** When metrics are combined, the distinct baseline differences "
+        "between groups can skew the aggregated trend, hiding the true platform-level performance.\n"
+        "2. **Safari Mobile vs. Chrome Desktop:** Safari mobile users often exhibit shorter session times (low time_on_page) but "
+        "high baseline conversion/purchasing intent (high revenue). Conversely, Chrome desktop users spend longer browsing (high time_on_page) "
+        "but may have lower average transaction sizes (low revenue) or higher bounce rates.\n"
+        "3. **Revenue Diagnostics:** RevOps teams must segment metrics by platform, browser, device, or acquisition channel "
+        "before making crucial product optimization, ad spent, or budget allocation decisions."
     )
